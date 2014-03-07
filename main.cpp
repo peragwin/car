@@ -1,13 +1,16 @@
+
+
 #include "mbed.h"
 #include "nbprint.h"
+
 
 PwmOut leftMotor(PTA12);
 PwmOut rightMotor(PTA4);
 DigitalOut brake(PTD4);
 PwmOut servo(PTA5);
 
-#define TURN_LEFT 300
-#define TURN_RIGHT 400
+#define TURN_LEFT 350
+#define TURN_RIGHT 350
 #define TURN_FORWARD 1500
 #define TURN_MAXTURN 300
 
@@ -15,7 +18,7 @@ PwmOut servo(PTA5);
 void initPWM(){
 	leftMotor.period_ms(5);
 	rightMotor.period_ms(5);
-	servo.period_ms(20);
+	servo.period_ms(20); 
 }
 	
 int goForward(float speed){
@@ -45,6 +48,7 @@ void turn(float per){
 	servo.pulsewidth_us(TURN_FORWARD+dev);
 }
 
+
 int main() {
    // nbprint_setup();
 		
@@ -59,6 +63,9 @@ int main() {
 			turn(-1.0f);
 			//passiveBrake();
   		wait(4);
+			passiveBrake();  
+			turn(0.0f);
+			wait(4);
 		}
 }
 
