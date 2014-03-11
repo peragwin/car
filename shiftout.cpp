@@ -1,0 +1,1 @@
+//creates helper functions for linescan camera

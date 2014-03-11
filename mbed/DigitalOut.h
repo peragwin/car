@@ -45,6 +45,7 @@ public:
      *
      *  @param pin DigitalOut pin to connect to
      */
+		DigitalOut () {};
     DigitalOut(PinName pin) {
         gpio_init(&gpio, pin, PIN_OUTPUT);
     }
