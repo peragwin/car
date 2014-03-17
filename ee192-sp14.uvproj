@@ -418,29 +418,14 @@
               <FilePath>main.cpp</FilePath>
             </File>
             <File>
-              <FileName>NBPrint.cpp</FileName>
+              <FileName>linescan.cpp</FileName>
               <FileType>8</FileType>
-              <FilePath>.\NBPrint\NBPrint.cpp</FilePath>
+              <FilePath>.\linescan.cpp</FilePath>
             </File>
             <File>
-              <FileName>NBPrint.h</FileName>
+              <FileName>linescan.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\NBPrint\NBPrint.h</FilePath>
-            </File>
-            <File>
-              <FileName>gyro.cpp</FileName>
-              <FileType>8</FileType>
-              <FilePath>.\gyro.cpp</FilePath>
-            </File>
-            <File>
-              <FileName>MPU6050.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\MPU6050\MPU6050.h</FilePath>
-            </File>
-            <File>
-              <FileName>MPU6050.cpp</FileName>
-              <FileType>8</FileType>
-              <FilePath>.\MPU6050\MPU6050.cpp</FilePath>
+              <FilePath>.\linescan.h</FilePath>
             </File>
           </Files>
         </Group>

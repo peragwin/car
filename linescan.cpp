@@ -1,32 +1,21 @@
 //creates helper functions for linescan camera
 
 #include "mbed.h"
-
+#include "linescan.h"
 //create "default" constructors
 //	appended to respective headers
 //DigitalOut::DigitalOut(){}
 //AnalogIn::AnalogIn(){}
 
-class Linescan {
-	private:
-		int _idx;
-		DigitalOut si, ck;
-		AnalogIn ao;
-		volatile int camera_scan[128];
-		void a2dconvert (void);
-	public:
-		Linescan (PinName,PinName,PinName);
-		int camera_avg[128]; //array that is the average over some samples
-		int* getScan (void);
-		void scan (void);
-};
 
-Linescan::Linescan(PinName si_pin, PinName ck_pin, PinName ao_pin){
+
+Linescan::Linescan(DigitalOut si_pin,PwmOut ck_pin, AnalogIn ao_pin){
 	
-	si = DigitalOut(si_pin);
-	ck = DigitalOut(ck_pin);
-	ao = AnalogIn(ao_pin);
-	
+	//si = DigitalOut(si_pin);
+	//ck = PwmOut(ck_pin);
+	//ao = AnalogIn(ao_pin);
+	ck.period(0.001);
+	ck.write(0.5);
 }
 
 

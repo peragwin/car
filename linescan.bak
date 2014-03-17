@@ -1,0 +1,129 @@
+
+
+#include "mbed.h"
+#include <stdio.h>
+//#include "linescan.h"
+
+#define TURN_LEFT 350
+#define TURN_RIGHT 350
+#define TURN_FORWARD 1500
+#define TURN_MAXTURN 300
+
+Serial pc(USBTX,USBRX);
+//same pinout order right to left as on power board
+DigitalOut brake(PTD4); // right most pin / 2 away from edge
+PwmOut leftMotor(PTA12); //adjacent
+PwmOut rightMotor(PTA5);  // skips 1
+
+PwmOut servo(PTA13); //left most, and on other socket
+
+PwmOut cam_ck(PTC9);
+DigitalOut cam_si(PTD0);
+AnalogIn cam_ao(PTB0);
+
+void initPWM(){
+	// FIX ME - something weird is going on with the pwms
+	servo.period_ms(20); 
+	leftMotor.period_ms(20);
+	rightMotor.period_ms(20);
+	
+	cam_ck.period(0.00005);
+	cam_ck.write(0.5);
+	
+}
+	
+int goForward(float speed){
+	brake = 0;
+	leftMotor.write(speed);
+	rightMotor.write(speed);
+	//brake = 0;
+	return 1;
+}
+
+void leftMotorOn(){
+	leftMotor.write(0.30f);
+	rightMotor.write(0.0f);
+	brake = 0;
+}
+void passiveBrake(){
+	brake = 1;
+}
+
+// per should be percent to turn, between -1 and 1
+void turn(float per){
+	int dev = 0;
+	if( per > 0 ){
+			dev = per*TURN_RIGHT;
+	} else{
+		dev = per*TURN_LEFT;
+	}
+	servo.pulsewidth_us(TURN_FORWARD+dev);
+}
+
+
+int main() {
+   // nbprint_setup();
+		
+	initPWM();
+	
+		//int isGoingFwd = goForward(0.30f); 
+	int linescan[128];
+	for (int i =0; i<128; i++){
+			linescan[i] = 0;
+	}
+	int linemax = 0;
+	float turnto;
+		//Linescan camera(cam_si,cam_ck,cam_ao);
+	while(1){
+		wait(0.01); //10ms integration
+		cam_si = 1;
+		wait(.001); // serial initiation pulse
+		cam_si = 0;
+		// read from analog sensor
+		for (int i = 0; i<128;i++){
+			int aout = cam_ao.read_u16();
+			//printf("pixel %d", aout);
+			//pc.printf("hm %d \n", aout);
+			linescan[i] = aout;//.5*linescan[i] + aout;
+			if (linescan[i] >= linescan[linemax]){
+				linemax = i;
+			}
+			wait(0.00005); //one period of the cameras clock
+		}
+		//pc.printf("hm --------------------------------------------");
+		int max = linescan[linemax];
+		int threshold = .75*max;
+		
+		for (int i = 0; i<128; i++){
+			if (i+10 < 128 && linescan[i] < threshold && linescan[i+10] < threshold){
+				//if (i+5 > 64){
+				//	turnto = 1 - (i+5)/64.0;
+				//}
+				//else{
+				//	turnto = (i+5-64)/64.0;
+				//}
+				turnto = (i+5-32)/32.0;
+				turn(turnto);
+				break;
+			}
+		} 
+		//turnto = (linemax-127)/128.0;
+		//turn(turnto);
+		/*
+		for (int i =0; i<128; i++){
+			pc.printf("index %d : %d\n", i, linescan[i]);
+		} */
+	}
+		/*while(1){
+			turn(1.0f);
+			int isGoingFwd = goForward(0.30f);
+			wait(4);
+			turn(-1.0f);
+			//passiveBrake();
+  		wait(4);
+			passiveBrake();  
+			turn(0.0f);
+			wait(4);
+		}*/
+}
+
