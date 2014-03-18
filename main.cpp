@@ -87,29 +87,16 @@ void gaussian_filter(int data[][NUM_SCANS], int output[][NUM_SCANS]){
 
 }
 
-int **differential(int** data, int n){
+void differential(int data[][NUM_SCANS], int diff[][NUM_SCANS]){
+	int i,j;
+	for (j = 0; j < NUM_SCANS; j++){
 
-	if (n == 0)
-		return data;
-
-	int i, j;
-	int *ndifs;
-	int **diffs;
-	diffs = new int *[NUM_SCANS];
-	for (i = 0; i < NUM_SCANS; i++){
-		ndifs = new int[128];
-		for (j = 0; j < 128; j++){
-			ndifs[j] = 0;
+		for (i = 10; i < 118; i++){
+			
+			// 2nd derivative filter, 2nd order approximation, then 1st to compare
+			diff[i][j] =  data[(i - 1)][j] - 2 * data[i][j] + data[(i + 1)][j];
 		}
-		ndifs[0] = data[0][i]-data[127][i]; //wrap around to the end for the first element so theres no untouched data
-		for (j = 1; j < 128; j++){
-			ndifs[j] = data[j][i] - data[j - 1][i];
-		}
-
-		diffs[i] = ndifs;
 	}
-
-	return differential(diffs, n - 1);
 
 }
 
@@ -360,14 +347,31 @@ int main() {
 	initPWM();
 	
 		//int isGoingFwd = goForward(0.30f); 
-	int linescan[128];
-	for (int i =0; i<128; i++){
-			linescan[i] = 0;
-	}
+	int linescan[128][NUM_SCANS] = {};
+	int lpscan[128][NUM_SCANS] = {};
+	int diffscan[128][NUM_SCANS]= {};
+	
+	int *linepts;
+	float *lsqcoef, *ladcoef;
+	float *lsline;
+	lsline = new float[NUM_SCANS];
+	float *ladline;
+	ladline = new float[NUM_SCANS];
+	float *usecoef;
+	float lserrdist, laderrdist;
+	//for (int i =0; i<128; i++){
+	//		linescan[i] = 0;
+	//}
 	int linemax = 0;
 	float turnto;
+	int linerow = 0;
 		//Linescan camera(cam_si,cam_ck,cam_ao);
 	while(1){
+		cam_si = 1;
+		wait(.000001); 
+		cam_si = 0;
+//  first three lines will clear the buffer on the camera.
+//	not exactly necesasry if using a ticker or some thread-like processing	
 		wait(0.01); //10ms integration
 		cam_si = 1;
 		wait(.001); // serial initiation pulse
@@ -377,36 +381,48 @@ int main() {
 			int aout = cam_ao.read_u16();
 			//printf("pixel %d", aout);
 			//pc.printf("hm %d \n", aout);
-			linescan[i] = aout;//.5*linescan[i] + aout;
-			if (linescan[i] >= linescan[linemax]){
-				linemax = i;
-			}
+			linescan[i][linerow] = aout;//.5*linescan[i] + aout;
+			//if (linescan[i] >= linescan[linemax]){
+			//	linemax = i;
+			//}
 			wait(0.00005); //one period of the cameras clock
 		}
+		linerow++;
+		linerow %= NUM_SCANS;
 		//pc.printf("hm --------------------------------------------");
-		int max = linescan[linemax];
-		int threshold = .75*max;
 		
-		for (int i = 0; i<128; i++){
-			if (i+10 < 128 && linescan[i] < threshold && linescan[i+10] < threshold){
-				//if (i+5 > 64){
-				//	turnto = 1 - (i+5)/64.0;
-				//}
-				//else{
-				//	turnto = (i+5-64)/64.0;
-				//}
-				turnto = (i+5-32)/32.0;
-				turn(turnto);
-				break;
-			}
-		} 
-		//turnto = (linemax-127)/128.0;
-		//turn(turnto);
-		/*
-		for (int i =0; i<128; i++){
-			pc.printf("index %d : %d\n", i, linescan[i]);
-		} */
+		
+		gaussian_filter(linescan,lpscan);
+
+		differential(lpscan,diffscan);
+
+		linepts = argmax(diffscan);
+
+		lsqcoef = leastsq(linepts);
+		
+		for (int i=0;i<NUM_SCANS;i++){
+			lsline[i] = i * lsqcoef[0] + lsqcoef[1];
+		}
+		//could cut out from here on
+		lserrdist = error_dist(lsline, linepts);
+		
+		ladcoef = leastabs(linepts,lsqcoef[0],lsqcoef[1]);
+		for(int i=0;i<NUM_SCANS; i++){
+			ladline[i] = i*ladcoef[0] + ladcoef[1];
+		}
+		laderrdist = error_dist(ladline,linepts);
+		
+		if(laderrdist < lserrdist){
+			usecoef = ladcoef;
+		} else {
+			usecoef = lsqcoef;
+		}
+		float current_speed = 1.0;
+		float turnto = find_angle(usecoef[0], usecoef[1], current_speed);
+		
+		turn(turnto);
 	}
+
 		/*while(1){
 			turn(1.0f);
 			int isGoingFwd = goForward(0.30f);
