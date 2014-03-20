@@ -22,12 +22,12 @@ static const float eps = 1e-3;
 Serial pc(USBTX,USBRX);
 //same pinout order right to left as on power board
 DigitalOut brake(PTD4); // right most pin / 2 away from edge
-PwmOut leftMotor(PTA12); //adjacent
+PwmOut leftMotor(PTA4); //adjacent
 PwmOut rightMotor(PTA5);  // skips 1
 
 PwmOut servo(PTA13); //left most, and on other socket
 
-PwmOut cam_ck(PTC9);
+PwmOut cam_ck(PTA1);
 DigitalOut cam_si(PTD0);
 AnalogIn cam_ao(PTB0);
 
@@ -224,6 +224,26 @@ int argmin(int data[]){
 	
 	//return max;
 }
+void argmin(int data[][NUM_SCANS], int *min){
+
+	int i,j, tmp,tmp_i;
+	//int *max = new int[NUM_SCANS];
+
+	for (i = 0; i < NUM_SCANS; i++){	
+		tmp = 66000;
+		tmp_i = 0;
+		for (j = 2; j < 126; j++){
+			if (data[j][i] <= tmp){
+				tmp = data[j][i];
+				tmp_i = j;
+			}
+		}
+		min[i] = tmp_i;
+	}
+		return;
+	
+	//return max;
+}
 
 int findmax(int data[][NUM_SCANS]){
 	int i, j, mx;
@@ -414,14 +434,20 @@ float find_angle(float m, float b, float d_x){
 	return angle/PI;
 }
 float find_angle(int max, float d_x, float theta){
-	float angle, alpha, beta;
+	float angle, alpha, beta, dalpha, ret;
+
 
 	//alpha = LINE_SCANNER_SCALE / d_x * m;
 	alpha = 64 - max;
-	beta = LINE_SCANNER_SCALE / d_x * alpha;
-	angle = -atan(beta); // +alpha
 
-	return fabs(alpha/48)*angle/PI;
+	
+	beta = LINE_SCANNER_SCALE / d_x * alpha;
+	angle = -atan(beta)/PI; 
+
+	ret = -(alpha/42);   //-alpha/42 is good
+
+	
+	return ret;
 }
 
 
@@ -429,8 +455,8 @@ float find_angle(int max, float d_x, float theta){
 void initPWM(){
 	// FIX ME - something weird is going on with the pwms
 	servo.period_ms(20); 
-	leftMotor.period_ms(20);
-	rightMotor.period_ms(20);
+	leftMotor.period_ms(2);
+	rightMotor.period_ms(2);
 	
 	cam_ck.period(0.00005);
 	cam_ck.write(0.5);
@@ -476,10 +502,11 @@ int main() {
 		
 	initPWM();
 	
+	int isGoingFwd = goForward(0.25f);
 	
 	//int linescan[128][NUM_SCANS] = {};
 	//int altscan[128][NUM_SCANS] = {};
-	//int linepts[13];
+	//int linemin[13], linemax[13], linepts[13];
 	int linescan[128] = {};
 	int altscan[128] = {};
 	int linemax, linemin, linecenter;
@@ -497,15 +524,17 @@ int main() {
 	//}
 	//int linemax = 0;
 	float turnto = 0;
+	float dturn = 0;
+	float pturn = 0;
 	int linerow = 0;
 		//Linescan camera(cam_si,cam_ck,cam_ao);
 	while(1){
-		cam_si = 1;
-		wait(.00005); 
-		cam_si = 0;
+		//cam_si = 1;
+		//wait(.00005); 
+		//cam_si = 0;
 //  first three lines will clear the buffer on the camera.
 //	not exactly necesasry if using a ticker or some thread-like processing	
-		wait(0.01); //10ms integration
+		wait(0.005); //10ms integration
 		cam_si = 1;
 		wait(.00005); // serial initiation pulse
 		cam_si = 0;
@@ -563,13 +592,18 @@ int main() {
 		
 		current_speed = 1.0;
 		//turnto += find_angle(lsqcoef[0], lsqcoef[1], current_speed);
-		turnto += find_angle(linecenter, current_speed, turnto);
+		
+		turnto = find_angle(linecenter, current_speed, turnto);
+		
+		
 		if (turnto > 1){
 			turnto = 1;
 		} else if (turnto < -1) {
 			turnto = -1;
 		}
 	  turn(turnto);
+
+		
 		
 	}
 
