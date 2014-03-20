@@ -54,6 +54,9 @@ class PwmOut {
 
 public:
 
+		/** "default" contrustor **/
+		PwmOut() {}
+
     /** Create a PwmOut connected to the specified pin
      *
      *  @param pin PwmOut pin to connect to

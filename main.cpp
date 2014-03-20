@@ -153,15 +153,15 @@ void differential(int data[], int diff[]){
 	
 		
 		for (i = 0; i < 128; i++){
-			if (i < 8){
+			if (i < 4){
 				diff[i] = 0;
-			} else if (i > 120){
+			} else if (i > 124){
 				diff[i] = 0;
 			} else {
 			//1st derivative - could be implemented in the filter stage
-				//diff[i] = abs(data[i] - data[i-1]);
+				diff[i] = data[i] - data[i-1];
 			// 2nd derivative filter, 2nd order approximation, then 1st to compare
-				diff[i] =  data[(i - 1)] - 2 * data[i] + data[(i + 1)];
+				//diff[i] =  data[(i - 1)] - 2 * data[i] + data[(i + 1)];
 			}
 		}
 		//data[0] = 0;
@@ -198,6 +198,24 @@ int argmax(int data[]){
 		tmp_i = 0;
 		for (j = 2; j < 126; j++){
 			if (data[j] >= tmp){
+				tmp = data[j];
+				tmp_i = j;
+			}
+		}
+		return tmp_i;
+	
+	//return max;
+}
+int argmin(int data[]){
+
+	int j, tmp,tmp_i;
+	//int *max = new int[NUM_SCANS];
+
+		
+		tmp = 66000;
+		tmp_i = 0;
+		for (j = 2; j < 126; j++){
+			if (data[j] <= tmp){
 				tmp = data[j];
 				tmp_i = j;
 			}
@@ -403,7 +421,7 @@ float find_angle(int max, float d_x, float theta){
 	beta = LINE_SCANNER_SCALE / d_x * alpha;
 	angle = -atan(beta); // +alpha
 
-	return fabs(alpha/96)*angle/PI;
+	return fabs(alpha/48)*angle/PI;
 }
 
 
@@ -464,7 +482,7 @@ int main() {
 	//int linepts[13];
 	int linescan[128] = {};
 	int altscan[128] = {};
-	int linemax;
+	int linemax, linemin, linecenter;
 		
 	float lsqcoef[2], ladcoef[2];
 	float *lsline;
@@ -533,6 +551,8 @@ int main() {
 		
 		
 		linemax = argmax(linescan);
+		linemin = argmin(linescan);
+		linecenter = (linemax + linemin)/2; 
 		//for (i = 0; i< NUM_SCANS; i++){
 		//	pc.printf("%f\r",lsqcoef[0]);
 		//}
@@ -543,7 +563,7 @@ int main() {
 		
 		current_speed = 1.0;
 		//turnto += find_angle(lsqcoef[0], lsqcoef[1], current_speed);
-		turnto += find_angle(linemax, current_speed, turnto);
+		turnto += find_angle(linecenter, current_speed, turnto);
 		if (turnto > 1){
 			turnto = 1;
 		} else if (turnto < -1) {
