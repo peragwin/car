@@ -502,7 +502,7 @@ int main() {
 		
 	initPWM();
 	
-	int isGoingFwd = goForward(0.25f);
+	//int isGoingFwd = goForward(0.25f);
 	
 	//int linescan[128][NUM_SCANS] = {};
 	//int altscan[128][NUM_SCANS] = {};
@@ -532,6 +532,7 @@ int main() {
 		//cam_si = 1;
 		//wait(.00005); 
 		//cam_si = 0;
+		
 //  first three lines will clear the buffer on the camera.
 //	not exactly necesasry if using a ticker or some thread-like processing	
 		wait(0.005); //10ms integration
@@ -582,6 +583,8 @@ int main() {
 		linemax = argmax(linescan);
 		linemin = argmin(linescan);
 		linecenter = (linemax + linemin)/2; 
+		
+		pc.printf("%d\n\r", linecenter);
 		//for (i = 0; i< NUM_SCANS; i++){
 		//	pc.printf("%f\r",lsqcoef[0]);
 		//}
