@@ -444,7 +444,7 @@ float find_angle(int max, float d_x, float theta){
 	beta = LINE_SCANNER_SCALE / d_x * alpha;
 	angle = -atan(beta)/PI; 
 
-	ret = -(alpha/42);   //-alpha/42 is good
+	ret = (alpha/42);   //-alpha/42 is good
 
 	
 	return ret;
@@ -502,7 +502,7 @@ int main() {
 		
 	initPWM();
 	
-	//int isGoingFwd = goForward(0.25f);
+	int isGoingFwd = goForward(0.35f);
 	
 	//int linescan[128][NUM_SCANS] = {};
 	//int altscan[128][NUM_SCANS] = {};
