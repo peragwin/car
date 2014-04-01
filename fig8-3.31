@@ -17,8 +17,6 @@
 #define PROPORTIONAL_PARAM 50
 #define DIFFERENTIAL_PARAM .1
 
-
-
 using namespace std;
 
 static const float eps = 1e-3;
@@ -35,15 +33,6 @@ PwmOut servo(PTA13); //left most, and on other socket
 PwmOut cam_ck(PTA1);
 DigitalOut cam_si(PTD0);
 AnalogIn cam_ao(PTB0);
-
-InterruptIn vel_sensor(PTD3);
-
-Ticker vel_sensing;
-int vel_sensor_count = 0;
-float vel_sensor_count_avg = 0;
-
-float isGoingFwd = .1;
-
 
 static float gaussian_kernel[3][5] = { { 0.0370   , 0.0720  ,  0.0899  ,  0.0720   , 0.0370},
    { 0.0462  ,  0.0899  ,  0.1123 ,   0.0899  ,  0.0462 },
@@ -528,18 +517,12 @@ void initPWM(){
 	
 }
 	
-float goForward(float speed){
-	if (speed < 0){
-		speed = 0;
-	} 
-	else if (speed > 1){
-		speed = 1.0;
-	}
+int goForward(float speed){
 	brake = 0;
 	leftMotor.write(speed);
 	rightMotor.write(speed);
 	//brake = 0;
-	return speed;
+	return 1;
 }
 
 void leftMotorOn(){
@@ -568,41 +551,12 @@ void turn(float per){
 }
 
 
-void vel_sensor_counter(){
-	vel_sensor_count+=4;
-}
-
-
-
-#define VEL_DESIRED_TICKS .75
-#define VEL_KP .06
-
-void vel_sensing_tick(){
-	vel_sensor_count_avg = .8*vel_sensor_count_avg+.2*vel_sensor_count;
-	//pc.printf("%f\n\r", vel_sensor_count_avg);
-	vel_sensor_count = 0;
-	
-	float err = vel_sensor_count_avg - VEL_DESIRED_TICKS;
-	float adj = -VEL_KP * err;
-	//pc.printf("%f\n\r", adj);
-	isGoingFwd = goForward(isGoingFwd*(1+adj));
-
-}
-
-
-
 int main() {
    // nbprint_setup();
 		
 	initPWM();
 	
-	//init velocity sensing
-	vel_sensor.rise(&vel_sensor_counter);
-	//vel_sensor.fall(&vel_sensor_counter);
-	vel_sensing.attach(&vel_sensing_tick,0.02); //20ms
-	
-	
-	isGoingFwd = goForward(0.1f);
+	int isGoingFwd = goForward(0.35f);
 	
 	//int linescan[128][NUM_SCANS] = {};
 	//int altscan[128][NUM_SCANS] = {};
@@ -665,9 +619,9 @@ int main() {
 		//turnto = linerow/13.0f;
 		//turn(turnto);
 		
-		//gaussian_filter(linescan,altscan);
+		gaussian_filter(linescan,altscan);
 
-		differential(linescan,altscan);
+		differential(altscan,linescan);
 
 		
 		
@@ -685,17 +639,15 @@ int main() {
 		/*linemax = argmax(linescan);
 		linemin = argmin(linescan);
 		linecenter = (linemax + linemin)/2;*/
-		
-		findcenter(altscan,tempcenter);
-		if(tempcenter[1] >= 1){ //this parameter will be finicky
-			//if(!isGoingFwd)
-			//	isGoingFwd = goForward(0.1f);
+		findcenter(linescan,tempcenter);
+		if(tempcenter[1] >= 0){ //this parameter will be finicky
+			if(!isGoingFwd)
+				isGoingFwd = goForward(0.35f);
 			linecenter = tempcenter[0];
+		} else {
+			isGoingFwd = 0;
+			passiveBrake(); //lost the line. slowdown
 		}
-		// else {
-			//isGoingFwd = 0;
-		//	passiveBrake(); //lost the line. slowdown
-		//}
 //		pc.printf("%d\n\r", linecenter);
 		//for (i = 0; i< NUM_SCANS; i++){
 		//	pc.printf("%f\r",lsqcoef[0]);

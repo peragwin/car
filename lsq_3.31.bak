@@ -17,8 +17,6 @@
 #define PROPORTIONAL_PARAM 50
 #define DIFFERENTIAL_PARAM .1
 
-
-
 using namespace std;
 
 static const float eps = 1e-3;
@@ -35,15 +33,6 @@ PwmOut servo(PTA13); //left most, and on other socket
 PwmOut cam_ck(PTA1);
 DigitalOut cam_si(PTD0);
 AnalogIn cam_ao(PTB0);
-
-InterruptIn vel_sensor(PTD3);
-
-Ticker vel_sensing;
-int vel_sensor_count = 0;
-float vel_sensor_count_avg = 0;
-
-float isGoingFwd = .1;
-
 
 static float gaussian_kernel[3][5] = { { 0.0370   , 0.0720  ,  0.0899  ,  0.0720   , 0.0370},
    { 0.0462  ,  0.0899  ,  0.1123 ,   0.0899  ,  0.0462 },
@@ -88,7 +77,7 @@ void gaussian_filter(int data[][NUM_SCANS], int output[][NUM_SCANS]){
 					
 					//inner most 2d convolution loop
 					//printf("\t%d\t%d ", i + l, j + k);
-					convsum += elem * gaussian_kernel[k][l];   ///1.0f / 12.0f * exp(-0.5f * (float(k*k)  + float(l*l) / 4.0f)) * elem;
+					convsum += elem * gaussian_kernel[k+1][l+2];   ///1.0f / 12.0f * exp(-0.5f * (float(k*k)  + float(l*l) / 4.0f)) * elem;
 					
 				}
 			}
@@ -181,6 +170,44 @@ void differential(int data[], int diff[]){
 		//data[0] = 0;
 		//data[127] = 0;
 	return;
+}
+
+void findcenter(int data[][NUM_SCANS], int ret[]){
+	int i,j, htmp, h_i, l_i, ltmp, mean=0;
+	float var=0;
+	//int *ret = new int[2]; //return center and certainty
+	
+	for(i=0;i<NUM_SCANS;i++){
+	
+		htmp = 0;
+		ltmp = 66000;
+		for(j = 2; j<126; j++){
+			mean += data[j][i];
+			if (data[j][i] >= htmp){
+				htmp = data[j][i];
+				h_i = j;
+			}
+			if(data[j][i] <= ltmp){
+				ltmp = data[j][i];
+				l_i = j;
+			}
+		}
+		mean /= 124;
+	/*	//calculate variance
+		for (j=2; j<126;j++){
+			var += (mean-data[j][i])*(mean-data[j][i]);
+		}
+		var /= 124;
+		var = sqrt(var); //stdev
+	*/	
+		ret[i] = (h_i + l_i)/2;
+		//ltmp = abs(mean - data[l_i][i]) / var;
+		//htmp = abs(mean - data[h_i][i]) / var;
+		//ret[1] = (ltmp+htmp)/2;
+		
+	
+	}
+	return;//n ret;
 }
 
 void findcenter(int data[], int ret[]){
@@ -514,7 +541,15 @@ float find_angle(int max, float prev){
 	
 	return ret;
 }
-
+float find_angle(float linecoef[], float prev){
+	float alpha, ret;
+	
+	alpha = 64 - (linecoef[1] + linecoef[0]*NUM_SCANS);
+	
+	ret = alpha/PROPORTIONAL_PARAM;
+	
+	return ret;
+}
 
 
 void initPWM(){
@@ -528,18 +563,12 @@ void initPWM(){
 	
 }
 	
-float goForward(float speed){
-	if (speed < 0){
-		speed = 0;
-	} 
-	else if (speed > 1){
-		speed = 1.0;
-	}
+int goForward(float speed){
 	brake = 0;
 	leftMotor.write(speed);
 	rightMotor.write(speed);
 	//brake = 0;
-	return speed;
+	return 1;
 }
 
 void leftMotorOn(){
@@ -568,49 +597,20 @@ void turn(float per){
 }
 
 
-void vel_sensor_counter(){
-	vel_sensor_count+=4;
-}
-
-
-
-#define VEL_DESIRED_TICKS .75
-#define VEL_KP .06
-
-void vel_sensing_tick(){
-	vel_sensor_count_avg = .8*vel_sensor_count_avg+.2*vel_sensor_count;
-	//pc.printf("%f\n\r", vel_sensor_count_avg);
-	vel_sensor_count = 0;
-	
-	float err = vel_sensor_count_avg - VEL_DESIRED_TICKS;
-	float adj = -VEL_KP * err;
-	//pc.printf("%f\n\r", adj);
-	isGoingFwd = goForward(isGoingFwd*(1+adj));
-
-}
-
-
-
 int main() {
    // nbprint_setup();
 		
 	initPWM();
 	
-	//init velocity sensing
-	vel_sensor.rise(&vel_sensor_counter);
-	//vel_sensor.fall(&vel_sensor_counter);
-	vel_sensing.attach(&vel_sensing_tick,0.02); //20ms
+  int isGoingFwd = goForward(0.3f);
 	
-	
-	isGoingFwd = goForward(0.1f);
-	
-	//int linescan[128][NUM_SCANS] = {};
-	//int altscan[128][NUM_SCANS] = {};
-	//int linemin[13], linemax[13], linepts[13];
-	int linescan[128] = {};
-	int altscan[128] = {};
-	int linemax, linemin, linecenter=64;
-	int tempcenter[2] = {};
+	int linescan[128][NUM_SCANS] = {};
+	int altscan[128][NUM_SCANS] = {};
+	int linecenter[NUM_SCANS] = {};
+	//int linescan[128] = {};
+	//int altscan[128] = {};
+	//int linemax, linemin, linecenter=64;
+	//int tempcenter[2] = {};
 		
 	float lsqcoef[2], ladcoef[2];
 	float *lsline;
@@ -640,20 +640,17 @@ int main() {
 		cam_si = 1;
 		wait(.00005); // serial initiation pulse
 		cam_si = 0;
+		
 		// read from analog sensor
 		for (i = 0; i<128;i++){
 			int aout = cam_ao.read_u16();
-			//printf("pixel %d", aout);
-			//pc.printf("hm %d \n", aout);
-			linescan[i] = aout;//.5*linescan[i] + aout;
-			//if (linescan[i] >= linescan[linemax]){
-			//	linemax = i;
-			//}
+			linescan[i][linerow] = aout;
 			wait(0.000012); //quarter period of the cameras clock (dunno, it works tho)
 		}
 		linerow++;
 		linerow %= NUM_SCANS;
 		
+		/* Prints out the scan when uncommented */
 		/*pc.printf("\r");
 		for(i = 0; i<128;i+=2){
 			if(linescan[i] > .75*65000){
@@ -665,9 +662,9 @@ int main() {
 		//turnto = linerow/13.0f;
 		//turn(turnto);
 		
-		//gaussian_filter(linescan,altscan);
+		gaussian_filter(linescan,altscan);
 
-		differential(linescan,altscan);
+		differential(altscan,linescan);
 
 		
 		
@@ -680,35 +677,23 @@ int main() {
 			}
 		}*/
 		
+
+		findcenter(linescan,linecenter);
 		
 		
-		/*linemax = argmax(linescan);
-		linemin = argmin(linescan);
-		linecenter = (linemax + linemin)/2;*/
-		
-		findcenter(altscan,tempcenter);
-		if(tempcenter[1] >= 1){ //this parameter will be finicky
-			//if(!isGoingFwd)
-			//	isGoingFwd = goForward(0.1f);
-			linecenter = tempcenter[0];
-		}
-		// else {
-			//isGoingFwd = 0;
-		//	passiveBrake(); //lost the line. slowdown
-		//}
 //		pc.printf("%d\n\r", linecenter);
 		//for (i = 0; i< NUM_SCANS; i++){
 		//	pc.printf("%f\r",lsqcoef[0]);
 		//}
 			//linemax = 0;
-		//leastsq(linepts, lsqcoef);
+		leastsq(linecenter, lsqcoef);
 		//pc.printf("%f\r",lsqcoef[0]);
 		//ladcoef = leastabs(linepts,lsqcoef[0],lsqcoef[1]);
 		
 		current_speed = 1.0;
 		//turnto += find_angle(lsqcoef[0], lsqcoef[1], current_speed);
 		
-		turnto = find_angle(linecenter, turnto); //turnto in arguement is the term used for a differential
+		turnto = find_angle(lsqcoef, turnto); //turnto in arguement is the term used for a differential
 		
 		
 		if (turnto > 1){
