@@ -17,13 +17,13 @@
 #define PROPORTIONAL_PARAM 50
 #define DIFFERENTIAL_PARAM .1
 
-
+#define K_EXPOSURE (.005 / 32768.0)
 
 using namespace std;
 
 static const float eps = 1e-3;
 
-
+Serial bt(PTC4,PTC3);
 Serial pc(USBTX,USBRX);
 //same pinout order right to left as on power board
 DigitalOut brake(PTD4); // right most pin / 2 away from edge
@@ -44,63 +44,8 @@ float vel_sensor_count_avg = 0;
 
 float isGoingFwd = .1;
 
-
-static float gaussian_kernel[3][5] = { { 0.0370   , 0.0720  ,  0.0899  ,  0.0720   , 0.0370},
-   { 0.0462  ,  0.0899  ,  0.1123 ,   0.0899  ,  0.0462 },
-   { 0.0370  ,  0.0720 ,   0.0899  ,  0.0720 ,   0.0370 },};
-
 static float gaussian1d_kernel[7] = {  0.0702  ,  0.1311 ,   0.1907  ,  0.2161  ,  0.1907  ,  0.1311  ,  0.0702 };
 
-void gaussian_filter(int data[][NUM_SCANS], int output[][NUM_SCANS]){
-	// using sigma1 = 1, sigma2 = 2
-	
-	//int sig1 = 1;
-	//int sig2 = 2;
-	int i, j,k,l;
-	float convsum;
-
-
-	for (j = 0; j < NUM_SCANS; j++){
-		for (i = 0; i < 128; i++){
-			convsum = 0;
-		
-			for (k = -1; k < 2; k++){
-				for (l = -2; l < 3; l++){
-					int il = i + l;
-					int jk = j + k;
-					
-					if (jk < 0){
-						jk += NUM_SCANS;
-						
-					}
-					else if (jk >= NUM_SCANS) {
-						jk -= NUM_SCANS;
-						
-					}
-					if (il < 0){
-						il += 128;
-					}
-					else if (il > 127){
-						il -= 128;
-					}
-					
-					float elem = data[il][jk];
-					
-					//inner most 2d convolution loop
-					//printf("\t%d\t%d ", i + l, j + k);
-					convsum += elem * gaussian_kernel[k][l];   ///1.0f / 12.0f * exp(-0.5f * (float(k*k)  + float(l*l) / 4.0f)) * elem;
-					
-				}
-			}
-			output[i][j] = int(convsum + 0.5);
-			//printf("%d, ", output[i][j]);
-		}
-	}
-
-
-	return;
-
-}
 void gaussian_filter(int data[], int output[]){
 	// using sigma1 = 1, sigma2 = 2
 	
@@ -145,23 +90,7 @@ void gaussian_filter(int data[], int output[]){
 
 }
 
-void differential(int data[][NUM_SCANS], int diff[][NUM_SCANS]){
-	int i,j;
-	for (j = 0; j < NUM_SCANS; j++){
 
-		for (i = 0; i < 128; i++){
-			if (i < 8){
-				diff[i][j] = 0;
-			} else if (i > 120){
-				diff[i][j] = 0;
-			} else {
-			// 2nd derivative filter, 2nd order approximation, then 1st to compare
-				diff[i][j] =  data[(i - 1)][j] - 2 * data[i][j] + data[(i + 1)][j];
-			}
-		}
-	}
-	return;
-}
 void differential(int data[], int diff[]){
 	int i;
 	
@@ -185,6 +114,7 @@ void differential(int data[], int diff[]){
 
 void findcenter(int data[], int ret[]){
 	int j, htmp, h_i, l_i, ltmp, mean=0;
+	float hv, lv;
 	float var=0;
 	//int *ret = new int[2]; //return center and certainty
 	
@@ -203,120 +133,24 @@ void findcenter(int data[], int ret[]){
 	}
 	mean /= 124;
 	//calculate variance
-	for (j=2; j<126;j++){
-		var += (mean-data[j])*(mean-data[j]);
-	}
-	var /= 124;
-	var = sqrt(var); //stdev
+	//for (j=2; j<126;j++){
+	//	var += (mean-data[j])*(mean-data[j]);
+	//}
+	//var /= 124;
+	//var = sqrt(var); //stdev
 	
-	ret[0] = (h_i + l_i)/2;
-	ltmp = abs(mean - data[l_i]) / var;
-	htmp = abs(mean - data[h_i]) / var;
-	ret[1] = (ltmp+htmp)/2;
+	ret[0] = int((h_i + l_i)/2);
+	
+	int dif = abs(h_i - l_i);
+	ret[1] = abs(10 - dif);
+	
+	//lv = abs(mean - data[l_i]) / var;
+	//hv = abs(mean - data[h_i]) / var;
+	//ret[1] = (lv+hv)/2;
 	
 	return;//n ret;
 }
 
-void argmax(int data[][NUM_SCANS], int *max){
-
-	int i, j, tmp,tmp_i;
-	//int *max = new int[NUM_SCANS];
-
-	for (i = 0; i < NUM_SCANS; i++){
-		tmp = 0;
-		tmp_i = 0;
-		for (j = 0; j < 128; j++){
-			if (data[j][i] >= tmp){
-				tmp = data[j][i];
-				tmp_i = j;
-			}
-		}
-		max[i] = tmp_i;
-	}
-	return;
-}
-
-int argmax(int data[]){
-
-	int j, tmp,tmp_i;
-	//int *max = new int[NUM_SCANS];
-
-		
-		tmp = 0;
-		tmp_i = 0;
-		for (j = 2; j < 126; j++){
-			if (data[j] >= tmp){
-				tmp = data[j];
-				tmp_i = j;
-			}
-		}
-		return tmp_i;
-	
-	//return max;
-}
-int argmin(int data[]){
-
-	int j, tmp,tmp_i;
-	//int *max = new int[NUM_SCANS];
-
-		
-		tmp = 66000;
-		tmp_i = 0;
-		for (j = 2; j < 126; j++){
-			if (data[j] <= tmp){
-				tmp = data[j];
-				tmp_i = j;
-			}
-		}
-		return tmp_i;
-	
-	//return max;
-}
-void argmin(int data[][NUM_SCANS], int *min){
-
-	int i,j, tmp,tmp_i;
-	//int *max = new int[NUM_SCANS];
-
-	for (i = 0; i < NUM_SCANS; i++){	
-		tmp = 66000;
-		tmp_i = 0;
-		for (j = 2; j < 126; j++){
-			if (data[j][i] <= tmp){
-				tmp = data[j][i];
-				tmp_i = j;
-			}
-		}
-		min[i] = tmp_i;
-	}
-		return;
-	
-	//return max;
-}
-
-int findmax(int data[][NUM_SCANS]){
-	int i, j, mx;
-	mx = 0;
-	for (i = 0; i < 128; i++){
-		for (j = 0; j < NUM_SCANS; j++){
-			if (data[i][j] > mx){
-				mx = data[i][j];
-			}
-		}
-	}
-	return mx;
-}
-int findmin(int data[][NUM_SCANS]){
-	int i, j, mx;
-	mx = 65536;
-	for (i = 0; i < 128; i++){
-		for (j = 0; j < NUM_SCANS; j++){
-			if (data[i][j] < mx){
-				mx = data[i][j];
-			}
-		}
-	}
-	return mx;
-}
 
 bool equalz(float a, float b){
 	if (abs(a - b) < eps){
@@ -327,179 +161,9 @@ bool equalz(float a, float b){
 	}
 }
 
-void leastsq(int data[], float *ret){
-	int i;
-	float r, b, m, tmp1, tmp2;
-	float meanx = 0;
-	float meany = 0;
-	float varx = 0, stdx;  
-	float vary = 0, stdy;
-	float sumy = 0, sumyy = 0;
-	float sumxy = 0;
-	float sumx = 0;
-	float sumxx = 0;
-
-	//float *ret;
-	//ret = new float[2];
-
-	//for (i=1; i<= NUM_SCANS; i++){ 
-		
-	//}
-	
-	for (i = 1; i < NUM_SCANS; i++){
-		meany += data[i-1] / float(NUM_SCANS);
-		meanx += i / float(NUM_SCANS);
-	}
-	for (i = 1; i < NUM_SCANS; i++){
-		varx += (meanx - i)*(meanx - i) / float(NUM_SCANS);
-		vary += (meany - data[i-1])*(meany - data[i-1]) / float(NUM_SCANS);	
-		sumy += data[i-1];
-		sumyy += data[i-1] * data[i-1];
-		sumx += i;
-		sumxx += i*i;
-		sumxy += i *data[i-1];
-	}
-	//pc.printf("%f\t%f\t%f\r",sumx, sumxx, sumxy);
-	stdx = sqrt(varx);
-	stdy = sqrt(vary);
-	tmp1 = (NUM_SCANS * sumxy - sumx*sumy);
-	tmp2 = (NUM_SCANS * sumxx - sumx*sumx)*(NUM_SCANS * sumyy - sumy*sumy);
-	
-	m = tmp1 / tmp2 * stdy / stdx;
-	b = meany - m*meanx;
-
-	ret[0] = m;
-	ret[1] = b;
-	//return ret;
-}
-
-float error_dist(float *y1, float *y2){
-	int i;
-	float ed = 0;
-	for (i = 0; i < NUM_SCANS; i++){
-		ed += abs(y1[i] - y2[i]);
-	}
-	return ed;
-}
-
-float error_dist(float *y1, int *y2){
-	int i;
-	float ed = 0;
-	for (i = 0; i < NUM_SCANS; i++){
-		ed += abs(y1[i] - y2[i]);
-	}
-	return ed;
-}
-
-float error_dist(int *y, float m, float b){
-	int i;
-	float ed = 0;
-	for (i = 0; i < NUM_SCANS; i++){
-		ed += abs(y[i] - m*i - b);
-	}
-	return ed;
-}
-
-
-float * _minim(int data[], float m, float b){
-	float step_size = 0.5f;
-	int loop = 2;
-	int inc = -1;
-	float err;
-	float *ret = new float[2];
-	float olderr = error_dist(data, m, b);
-	//increase by stepsize until err > olderr, then decrease doing the same thing
-	while (loop > 0){
-		m += inc*step_size;
-		err = error_dist(data, m, b);
-		if (equalz(err, olderr))
-			break;
-		if (err > olderr){
-			step_size *= .5;
-			inc = -inc;
-		}
-		else {
-			loop--;
-		}
-		olderr = err;
-	}
-	loop = 2;
-	step_size = .5;
-	inc = -1;
-	while (loop > 0){
-		b += inc*step_size;
-		err = error_dist(data, m, b);
-		if (equalz(err, olderr))
-			break;
-		if (err > olderr){ 
-				step_size *= .5;
-			inc = -inc;
-		}
-		else {
-			loop--;
-		}
-		olderr = err;
-	}
-	ret[0] = m;
-	ret[1] = b;
-	return ret;
-}
-
-float *leastabs(int data[], float m, float b){
-	int loop = 125; //some big enough number for convergence. 100ish or less should be fine with least squares as the initial guess
-	float m_est;
-	float b_est;
-	float *newest;
-	float *ret = new float[2];
-	while (loop>0){
-		m_est = m;
-		b_est = b;
-		newest = _minim(data, m, b);
-		m = newest[0];
-		b = newest[1];
-		if (equalz(m_est, m) && equalz(b_est, b)){
-			ret[0] = m;
-			ret[1] = b;
-			printf("yay, %d tries. %f, %f", loop, m, b);
-			return ret;
-		}
-		else{
-			loop--;
-		}
-	}
-	ret[0] = m;
-	ret[1] = b;
-	return ret;
-}
-
-float find_angle(float m, float b, float d_x){
-	float angle, alpha, beta;
-
-	alpha = 500*LINE_SCANNER_SCALE / d_x * m;
-	beta = LINE_SCANNER_SCALE / d_x * (64 - (m*NUM_SCANS+b));
-	angle = (atan(beta)); // +alpha
-
-	return angle/PI;
-}
-float find_angle(int max, float d_x, float theta){
-	float angle, alpha, beta, dalpha, ret;
-
-
-	//alpha = LINE_SCANNER_SCALE / d_x * m;
-	alpha = 64 - max;
-
-	
-	//beta = LINE_SCANNER_SCALE / d_x * alpha;
-	//angle = -atan(beta)/PI; 
-
-	ret = (alpha/50);   //-alpha/42 is good
-
-	
-	return ret;
-}
 
 float find_angle(int max, float prev){
-	float angle, alpha, beta, dalpha, ret;
+	float alpha, ret;
 
 
 	//alpha = LINE_SCANNER_SCALE / d_x * m;
@@ -515,7 +179,12 @@ float find_angle(int max, float prev){
 	return ret;
 }
 
-
+void delay(int d){
+	int i,j;
+	for( i = 0; i<d; i++){
+		for (j = 0; j<400; j++){}
+	}
+}
 
 void initPWM(){
 	//FIXED ///// FIX ME - something weird is going on with the pwms
@@ -574,26 +243,47 @@ void vel_sensor_counter(){
 
 
 
-#define VEL_DESIRED_TICKS .75
-#define VEL_KP .06
+static float VEL_DESIRED_TICKS = .75;
+#define VEL_KP 	.04
+#define VEL_KD 	.02
+#define VEL_P 	.15
 
-void vel_sensing_tick(){
-	vel_sensor_count_avg = .8*vel_sensor_count_avg+.2*vel_sensor_count;
-	//pc.printf("%f\n\r", vel_sensor_count_avg);
-	vel_sensor_count = 0;
+#define TARGET_PWM	.1
+
+void vel_sensing_tick()
+{
+	vel_sensor_count_avg = .5*vel_sensor_count_avg + .5*vel_sensor_count;
+	//bt.printf("%f\n\r", vel_sensor_count_avg);
 	
-	float err = vel_sensor_count_avg - VEL_DESIRED_TICKS;
-	float adj = -VEL_KP * err;
-	//pc.printf("%f\n\r", adj);
-	isGoingFwd = goForward(isGoingFwd*(1+adj));
+	float err = vel_sensor_count - VEL_DESIRED_TICKS;
+	vel_sensor_count = 0;
 
+	float err_avg = vel_sensor_count_avg - VEL_DESIRED_TICKS;
+
+	float propcntl = TARGET_PWM - VEL_P * err;
+	float adj = -VEL_KP * err;
+	float adj_avg = VEL_KD * err_avg;
+	
+	float newGoingFwd = isGoingFwd+adj;
+	//pc.printf("%f\n\r", adj);
+	if (brake == 0){
+		isGoingFwd = goForward(.8*propcntl+ .4*(isGoingFwd+adj - adj_avg) );
+	}
 }
 
 
 
 int main() {
    // nbprint_setup();
-		
+		//bt.baud(9600);
+//	while(1){
+//				if (bt.readable()){
+//					char msg = bt.getc();
+//					if (msg){
+//						break;
+//					}
+//				}
+//	}			
 	initPWM();
 	
 	//init velocity sensing
@@ -603,113 +293,91 @@ int main() {
 	
 	
 	isGoingFwd = goForward(0.1f);
-	
-	//int linescan[128][NUM_SCANS] = {};
-	//int altscan[128][NUM_SCANS] = {};
-	//int linemin[13], linemax[13], linepts[13];
+
 	int linescan[128] = {};
 	int altscan[128] = {};
-	int linemax, linemin, linecenter=64;
+	int linecenter=64;
 	int tempcenter[2] = {};
 		
-	float lsqcoef[2], ladcoef[2];
-	float *lsline;
-	lsline = new float[NUM_SCANS];
-	float *ladline;
-	ladline = new float[NUM_SCANS];
-	float *usecoef;
-	float lserrdist, laderrdist, current_speed;
 	int i;
-	//for (int i =0; i<128; i++){
-	//		linescan[i] = 0;
-	//}
-	//int linemax = 0;
+
 	float turnto = 0;
-	float dturn = 0;
-	float pturn = 0;
-	int linerow = 0;
-		//Linescan camera(cam_si,cam_ck,cam_ao);
+
+	float exposure_time = 0.005; //5ms to start
+	int exposure = 0;
+		
+
 	while(1){
-		//cam_si = 1;
-		//wait(.00005); 
-		//cam_si = 0;
+		
+		cam_si = 1;
+		wait(.00005);
+		cam_si = 0; //flush camera buffer
+		
+	//	wait(.0009); //18 clock cycles extra before integration starts
 		
 //  first three lines will clear the buffer on the camera.
 //	not exactly necesasry if using a ticker or some thread-like processing	
-		wait(0.005); //10ms integration
+		wait(.010);
+	//	wait(exposure_time); //10ms integration
 		cam_si = 1;
 		wait(.00005); // serial initiation pulse
 		cam_si = 0;
+		
+		exposure = 0;
 		// read from analog sensor
 		for (i = 0; i<128;i++){
 			int aout = cam_ao.read_u16();
-			//printf("pixel %d", aout);
-			//pc.printf("hm %d \n", aout);
 			linescan[i] = aout;//.5*linescan[i] + aout;
-			//if (linescan[i] >= linescan[linemax]){
-			//	linemax = i;
-			//}
-			wait(0.000012); //quarter period of the cameras clock (dunno, it works tho)
+			exposure += aout;
+			//delay(10);
+			//wait(0.0000125); //quarter period of the cameras clock (dunno, it works tho)
+			wait(0.000012);
 		}
-		linerow++;
-		linerow %= NUM_SCANS;
 		
-		/*pc.printf("\r");
-		for(i = 0; i<128;i+=2){
-			if(linescan[i] > .75*65000){
-				pc.printf("-");
-			} else {
-				pc.printf("_");
-			}
-		}*/
-		//turnto = linerow/13.0f;
-		//turn(turnto);
+		//auto exposure adjustment
+		int exp_diff = 0x7FFF - exposure/128; //positive means too little exposure, neg is too much
+		exposure_time *= 1 + 25*(K_EXPOSURE * exp_diff);
+		if (exposure_time < .001){
+			exposure_time = .001;
+		} else if (exposure_time > .05){
+			exposure_time = .05;
+		}
+		
+		//bt.printf("%d\t%f\n\r",exp_diff, exposure_time);
+		
+		
 		
 		//gaussian_filter(linescan,altscan);
 
 		differential(linescan,altscan);
 
 		
-		
-		/*pc.printf("\r");
+		/*
+		bt.printf("\r");
 		for(i = 0; i<128;i+=2){
 			if(linescan[i] > 1000){
-				pc.printf("-");
+				bt.printf("-");
 			} else {
-				pc.printf("_");
+				bt.printf("_");
 			}
 		}*/
 		
 		
-		
-		/*linemax = argmax(linescan);
-		linemin = argmin(linescan);
-		linecenter = (linemax + linemin)/2;*/
-		
 		findcenter(altscan,tempcenter);
-		if(tempcenter[1] >= 1){ //this parameter will be finicky
-			//if(!isGoingFwd)
-			//	isGoingFwd = goForward(0.1f);
+		
+		if(tempcenter[1] <= 10){ //this parameter will be finicky
+			brake = 0;
 			linecenter = tempcenter[0];
+		} else {
+			//brake = 1;
 		}
-		// else {
-			//isGoingFwd = 0;
-		//	passiveBrake(); //lost the line. slowdown
-		//}
+		
+	//	bt.printf("%d\n\r", tempcenter[1]);
+
 //		pc.printf("%d\n\r", linecenter);
-		//for (i = 0; i< NUM_SCANS; i++){
-		//	pc.printf("%f\r",lsqcoef[0]);
-		//}
-			//linemax = 0;
-		//leastsq(linepts, lsqcoef);
-		//pc.printf("%f\r",lsqcoef[0]);
-		//ladcoef = leastabs(linepts,lsqcoef[0],lsqcoef[1]);
-		
-		current_speed = 1.0;
-		//turnto += find_angle(lsqcoef[0], lsqcoef[1], current_speed);
-		
+
 		turnto = find_angle(linecenter, turnto); //turnto in arguement is the term used for a differential
-		
+		//VEL_DESIRED_TICKS = 2.8 - 1.4 * fabs(turnto);
 		
 		if (turnto > 1){
 			turnto = 1;
@@ -719,19 +387,17 @@ int main() {
 	  turn(turnto);
 
 		
+//		if (bt.readable()){
+//			char msg = bt.getc();
+//			if (msg == ' '){
+//					brake=1;
+//			} else if (msg == 'g'){
+//				brake = 0;
+//			}
+//		}
+	
 		
 	}
 
-		/*while(1){
-			turn(1.0f);
-			int isGoingFwd = goForward(0.30f);
-			wait(4);
-			turn(-1.0f);
-			//passiveBrake();
-  		wait(4);
-			passiveBrake();  
-			turn(0.0f);
-			wait(4);
-		}*/
 }
 
